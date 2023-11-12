@@ -37,4 +37,4 @@ create unique index permissions_role_id_resource_is_create_is_read_is_update_is_
   is_delete
 );
 
-create index permissions_resource_index on public.permissions (resource);
+create index permissions_role_id_resource_index on public.permissions (role_id, resource);

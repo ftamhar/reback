@@ -3,56 +3,95 @@ package reback
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
-	"fmt"
-	"time"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/pkg/errors"
 )
 
-var stmtReadPermissionsByRoleNameAndResourceName *sql.Stmt
+var (
+	ErrNoResultFound = errors.New("no result found")
+	ErrNoRoleSet     = errors.New("no role set")
+)
 
-func setStatementReadPermissionsByRoleName(ctx context.Context) {
-	stmtReadPermissionsByRoleNameAndResourceName, _ = dbConn.PrepareContext(ctx, `SELECT is_create, is_read, is_update, is_delete
-	FROM permissions p
-	LEFT JOIN roles r on p.role_id = r.id
-	WHERE r.name = $1 AND p.resource = $2`)
+func GetPermissionsByResourceNameAndRoleNames(ctx context.Context, resourceName string, roleNames []string) ([]Permission, error) {
+	if len(roleNames) == 0 {
+		return nil, ErrNoRoleSet
+	}
+	psql := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
+
+	query := psql.Select("is_create, is_read, is_update, is_delete").
+		From("permissions").
+		LeftJoin("roles ON permissions.role_id = roles.id").
+		Where(sq.Eq{
+			"permissions.resource": resourceName,
+			"roles.name":           roleNames,
+		})
+
+	rows, err := query.RunWith(dbConn).QueryContext(ctx)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	defer rows.Close()
+
+	var permissions []Permission
+	for rows.Next() {
+		var permission Permission
+		err = rows.Scan(&permission.IsCreate, &permission.IsRead, &permission.IsUpdate, &permission.IsDelete)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		permissions = append(permissions, permission)
+	}
+
+	if rows.Err() != nil {
+		return nil, errors.WithStack(rows.Err())
+	}
+
+	if len(permissions) == 0 {
+		return nil, ErrNoResultFound
+	}
+
+	return permissions, nil
 }
 
-func ReadPermissionsByRoleNameAndResourceName(ctx context.Context, roleName, resourceName string) (Permission, error) {
-	if isConnectToRedis() {
-		s, err := redisConn.Get(ctx, fmt.Sprintf("ReadPermissionsByRoleNameAndResourceName.%s.%s", roleName, resourceName)).Result()
-		if err == nil {
-			var permission Permission
-			err := json.Unmarshal([]byte(s), &permission)
-			if err != nil {
-				return permission, errors.WithStack(err)
-			}
-			return permission, nil
-		}
+func GetPermissionsByResourceNameAndRoleIds(ctx context.Context, resourceName string, roleIds []string) ([]Permission, error) {
+	if len(roleIds) == 0 {
+		return nil, ErrNoRoleSet
 	}
+	psql := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 
-	var permission Permission
-	err := stmtReadPermissionsByRoleNameAndResourceName.
-		QueryRowContext(ctx, roleName, resourceName).
-		Scan(&permission.IsCreate, &permission.IsRead, &permission.IsUpdate, &permission.IsDelete)
+	query := psql.Select("is_create, is_read, is_update, is_delete").
+		From("permissions").
+		Where(sq.Eq{
+			"resource": resourceName,
+			"role_id":  roleIds,
+		})
+
+	rows, err := query.RunWith(dbConn).QueryContext(ctx)
 	if err != nil {
-		return permission, errors.WithStack(err)
+		return nil, errors.WithStack(err)
+	}
+	defer rows.Close()
+
+	var permissions []Permission
+	for rows.Next() {
+		var permission Permission
+		err = rows.Scan(&permission.IsCreate, &permission.IsRead, &permission.IsUpdate, &permission.IsDelete)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+		permissions = append(permissions, permission)
 	}
 
-	if isConnectToRedis() {
-		b, err := json.Marshal(permission)
-		if err != nil {
-			return permission, errors.WithStack(err)
-		}
-		err = redisConn.Set(ctx, fmt.Sprintf("ReadPermissionsByRoleNameAndResourceName.%s.%s", roleName, resourceName), string(b), time.Duration(timeoutRedis)*time.Minute).Err()
-		if err != nil {
-			return permission, errors.WithStack(err)
-		}
+	if rows.Err() != nil {
+		return nil, errors.WithStack(rows.Err())
 	}
 
-	return permission, nil
+	if len(permissions) == 0 {
+		return nil, ErrNoResultFound
+	}
+
+	return permissions, nil
 }
 
 var stmtReadPermissionsByRoleId *sql.Stmt
