@@ -142,18 +142,9 @@ func CreatePermissions(ctx context.Context, permissions []Permission) error {
 		tx.Rollback()
 	}()
 
-	result, err := tx.ExecContext(ctx, "DELETE FROM permissions WHERE role_id = ", permissions[0].RoleId)
+	_, err = tx.ExecContext(ctx, "DELETE FROM permissions WHERE role_id = $1", permissions[0].RoleId)
 	if err != nil {
 		return errors.WithStack(err)
-	}
-
-	RowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return errors.WithStack(err)
-	}
-
-	if RowsAffected == 0 {
-		return ErrNoRowsAffected
 	}
 
 	psql := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)

@@ -12,7 +12,11 @@ var ErrNoRowsAffected = errors.New("no rows affected")
 var stmtCreateRole *sql.Stmt
 
 func setStatementCreateRole(ctx context.Context) {
-	stmtCreateRole, _ = dbConn.PrepareContext(ctx, "INSERT INTO roles(name, description) VALUES($1, $2) RETURNING id")
+	var err error
+	stmtCreateRole, err = dbConn.PrepareContext(ctx, "INSERT INTO roles(name, description) VALUES($1, $2) RETURNING id")
+	if err != nil {
+		panic(err)
+	}
 }
 
 func CreateRole(ctx context.Context, name, description string) (string, error) {

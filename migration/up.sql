@@ -20,6 +20,12 @@ create unique index roles_name_uindex on public.roles (name);
 create table
   permissions (
     id uuid default uuid_generate_v4 () not null constraint permissions_pk primary key,
+    created_at timestamptz default now () not null,
+    updated_at timestamptz default now () not null,
+    deleted_at timestamptz,
+    created_by text default '' not null,
+    updated_by text default '' not null,
+    deleted_by text default '' not null,
     role_id uuid not null constraint permissions_roles_id_fk references roles,
     resource text not null,
     is_create boolean default false not null,
